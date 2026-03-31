@@ -537,30 +537,7 @@ async function loadModel(){
   const txt=document.getElementById('ms-text');
   const connEl=document.getElementById('status-conn');
 
-  // 1. Essayer de charger un modèle externe (fonctionne si CORS OK)
-  const remoteUrls = [
-    'https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json',
-    'https://raw.githubusercontent.com/engr-rudn/MNIST-TFJS/main/model/model.json'
-  ];
-
-  for(const url of remoteUrls){
-    try {
-      txt.textContent='Tentative modèle externe...';
-      model = await Promise.race([
-        tf.loadLayersModel(url),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))
-      ]);
-      dot.className='ms-dot ready';
-      txt.textContent='Modèle MNIST externe ✓';
-      txt.className='ms-text ready';
-      connEl.textContent='MNIST (externe)';
-      document.getElementById('btn-analyze').disabled=false;
-      document.getElementById('btn-analyze').textContent='Analyser →';
-      return;
-    } catch(e){ /* continuer */ }
-  }
-
-  // 2. Fallback : entraîner un vrai modèle TF.js localement dans le browser
+  // 100% local — zéro dépendance externe, zéro CORS, fonctionne GitHub Pages
   txt.textContent='Entraînement local en cours...';
   dot.className='ms-dot loading';
   connEl.textContent='Entraînement local...';
