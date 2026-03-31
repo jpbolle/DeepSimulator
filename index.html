@@ -485,74 +485,144 @@ pixelCanvas.addEventListener('mouseleave',()=>{
   document.getElementById('px-hover').textContent='— survole la grille 28×28 —';
 });
 
-// ══════════ TENSORFLOW.JS MODEL ══════════
+// ══════════ TENSORFLOW.JS MODEL — entraîné localement, zéro CORS ══════════
 let model = null;
 
-async function buildAndTrainModel(){
-  // Build a small CNN-like dense model matching MNIST architecture
-  const m = tf.sequential();
-  m.add(tf.layers.dense({inputShape:[784], units:128, activation:'relu',
-    kernelInitializer:'glorotUniform'}));
-  m.add(tf.layers.dense({units:64, activation:'relu',
-    kernelInitializer:'glorotUniform'}));
-  m.add(tf.layers.dense({units:10, activation:'softmax'}));
-  m.compile({optimizer:'adam', loss:'categoricalCrossentropy', metrics:['accuracy']});
-  return m;
+// Génère des exemples synthétiques d'un chiffre donné
+// Chaque chiffre a une "signature" de pixels caractéristique
+function makeSyntheticDigit(digit, n=60){
+  const xs=[], ys=[];
+  for(let i=0;i<n;i++){
+    const img = new Array(784).fill(0);
+    const noise = ()=>(Math.random()-.5)*.18;
+
+    // Coordonnées de base pour chaque chiffre (grille 28x28, centre=14)
+    const strokes = {
+      0:[[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18],[7,19],[8,7],[8,20],[9,6],[9,21],[10,6],[10,21],[11,6],[11,21],[12,6],[12,21],[13,6],[13,21],[14,6],[14,21],[15,6],[15,21],[16,6],[16,21],[17,6],[17,21],[18,6],[18,21],[19,7],[19,20],[20,8],[20,19],[21,9],[21,10],[21,11],[21,12],[21,13],[21,14],[21,15],[21,16],[21,17],[21,18]],
+      1:[[6,14],[7,13],[7,14],[8,12],[8,14],[9,14],[10,14],[11,14],[12,14],[13,14],[14,14],[15,14],[16,14],[17,14],[18,14],[19,14],[20,14],[21,14],[20,12],[20,13],[20,14],[20,15],[20,16]],
+      2:[[6,9],[6,10],[6,11],[6,12],[6,13],[7,8],[7,14],[8,7],[8,15],[9,7],[9,15],[10,15],[11,14],[12,13],[13,12],[14,11],[15,10],[16,9],[17,8],[18,8],[19,8],[20,8],[20,9],[20,10],[20,11],[20,12],[20,13],[20,14],[20,15],[20,16],[20,17],[20,18],[20,19]],
+      3:[[6,8],[6,9],[6,10],[6,11],[6,12],[7,7],[7,13],[8,7],[8,13],[9,7],[9,13],[10,8],[10,12],[11,9],[11,10],[11,11],[11,12],[11,13],[12,14],[13,14],[14,14],[14,13],[14,12],[14,11],[15,15],[16,15],[17,15],[17,14],[18,14],[18,13],[19,8],[19,12],[20,7],[20,13],[21,8],[21,9],[21,10],[21,11],[21,12]],
+      4:[[6,16],[7,15],[7,16],[8,14],[8,16],[9,13],[9,16],[10,12],[10,16],[11,11],[11,16],[12,10],[12,16],[13,9],[13,16],[14,8],[14,16],[15,7],[15,8],[15,9],[15,10],[15,11],[15,12],[15,13],[15,14],[15,15],[15,16],[15,17],[15,18],[15,19],[16,16],[17,16],[18,16],[19,16],[20,16],[21,16]],
+      5:[[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[6,19],[7,8],[8,8],[9,8],[10,8],[11,8],[12,8],[12,9],[12,10],[12,11],[12,12],[12,13],[12,14],[13,15],[14,16],[15,16],[16,16],[17,15],[18,14],[19,7],[19,13],[20,7],[20,14],[21,8],[21,9],[21,10],[21,11],[21,12],[21,13]],
+      6:[[6,12],[6,13],[6,14],[6,15],[6,16],[7,11],[7,17],[8,10],[8,18],[9,9],[9,19],[10,8],[10,19],[11,8],[11,19],[12,8],[12,14],[12,15],[12,16],[12,17],[12,18],[12,19],[13,8],[13,13],[14,8],[14,12],[15,8],[15,12],[16,9],[16,12],[17,9],[17,12],[18,10],[18,13],[19,11],[19,14],[20,12],[20,13]],
+      7:[[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[6,19],[7,18],[8,17],[9,16],[10,16],[11,15],[12,14],[13,14],[14,13],[15,12],[16,12],[17,11],[18,10],[19,10],[20,9]],
+      8:[[6,9],[6,10],[6,11],[6,12],[6,13],[7,8],[7,14],[8,8],[8,14],[9,8],[9,14],[10,9],[10,13],[11,10],[11,11],[11,12],[11,13],[11,14],[12,9],[12,15],[13,8],[13,16],[14,8],[14,16],[15,8],[15,16],[16,9],[16,15],[17,10],[17,14],[18,11],[18,12],[18,13],[19,10],[19,14],[20,9],[20,15],[21,8],[21,16],[22,9],[22,10],[22,11],[22,12],[22,13],[22,14],[22,15]],
+      9:[[6,12],[6,13],[6,14],[6,15],[6,16],[7,11],[7,17],[8,11],[8,17],[9,12],[9,18],[10,18],[11,12],[11,13],[11,14],[11,15],[11,16],[11,17],[11,18],[12,12],[13,12],[14,12],[14,13],[14,14],[14,15],[14,16],[15,11],[15,17],[16,11],[16,17],[17,11],[17,17],[18,12],[18,16],[19,13],[19,14],[19,15]]
+    };
+
+    const pts = strokes[digit] || strokes[0];
+    pts.forEach(([r,c])=>{
+      // Jitter aléatoire pour la variabilité
+      const rj=Math.round(r+noise()*3), cj=Math.round(c+noise()*3);
+      for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+        const rr=rj+dr, cc=cj+dc;
+        if(rr>=0&&rr<28&&cc>=0&&cc<28){
+          const val=Math.max(0,Math.min(1,0.7+Math.random()*.3+noise()));
+          img[rr*28+cc]=Math.max(img[rr*28+cc],val);
+        }
+      }
+    });
+    // Ajouter du bruit de fond léger
+    for(let j=0;j<784;j++) if(Math.random()<.04) img[j]=Math.max(img[j],Math.random()*.15);
+
+    xs.push(img);
+    const label=new Array(10).fill(0); label[digit]=1;
+    ys.push(label);
+  }
+  return {xs, ys};
 }
 
-// We use a pre-trained MNIST model from TF.js model zoo via tfjs-models
-// Fallback: build synthetic weights that give plausible-looking outputs
 async function loadModel(){
   const dot=document.getElementById('ms-dot');
   const txt=document.getElementById('ms-text');
   const connEl=document.getElementById('status-conn');
 
-  try {
-    // Try loading the official TF.js MNIST model
-    txt.textContent='Chargement modèle MNIST...';
-    model = await tf.loadLayersModel(
-      'https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json'
-    );
-    dot.className='ms-dot ready';
-    txt.textContent='Modèle MNIST chargé ✓';
-    txt.className='ms-text ready';
-    connEl.textContent='MNIST CNN (officiel)';
-  } catch(e1) {
+  // 1. Essayer de charger un modèle externe (fonctionne si CORS OK)
+  const remoteUrls = [
+    'https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json',
+    'https://raw.githubusercontent.com/engr-rudn/MNIST-TFJS/main/model/model.json'
+  ];
+
+  for(const url of remoteUrls){
     try {
-      // Fallback: another public MNIST model
-      txt.textContent='Essai modèle alternatif...';
-      model = await tf.loadLayersModel(
-        'https://raw.githubusercontent.com/engr-rudn/MNIST-TFJS/main/model/model.json'
-      );
+      txt.textContent='Tentative modèle externe...';
+      model = await Promise.race([
+        tf.loadLayersModel(url),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000))
+      ]);
       dot.className='ms-dot ready';
-      txt.textContent='Modèle MNIST chargé ✓';
+      txt.textContent='Modèle MNIST externe ✓';
       txt.className='ms-text ready';
-      connEl.textContent='MNIST Dense (alternatif)';
-    } catch(e2) {
-      // Final fallback: use our own trained-on-the-fly simulation
-      // that at least behaves like softmax and gives reasonable outputs
-      txt.textContent='Mode local (simulé pédagogique)';
-      dot.className='ms-dot';
-      dot.style.background='var(--yellow)';
-      connEl.textContent='Simulation locale';
-      model = 'local';
-    }
+      connEl.textContent='MNIST (externe)';
+      document.getElementById('btn-analyze').disabled=false;
+      document.getElementById('btn-analyze').textContent='Analyser →';
+      return;
+    } catch(e){ /* continuer */ }
   }
 
+  // 2. Fallback : entraîner un vrai modèle TF.js localement dans le browser
+  txt.textContent='Entraînement local en cours...';
+  dot.className='ms-dot loading';
+  connEl.textContent='Entraînement local...';
+
+  // Construction du modèle
+  const m = tf.sequential();
+  m.add(tf.layers.dense({inputShape:[784], units:128, activation:'relu', kernelInitializer:'glorotNormal'}));
+  m.add(tf.layers.dropout({rate:0.2}));
+  m.add(tf.layers.dense({units:64, activation:'relu', kernelInitializer:'glorotNormal'}));
+  m.add(tf.layers.dense({units:10, activation:'softmax'}));
+  m.compile({optimizer:tf.train.adam(0.001), loss:'categoricalCrossentropy', metrics:['accuracy']});
+
+  // Génération des données synthétiques (60 exemples × 10 chiffres = 600 exemples)
+  let allX=[], allY=[];
+  for(let d=0;d<10;d++){
+    const {xs,ys}=makeSyntheticDigit(d, 80);
+    allX=[...allX,...xs]; allY=[...allY,...ys];
+  }
+
+  // Mélange
+  const idx=[...Array(allX.length).keys()].sort(()=>Math.random()-.5);
+  allX=idx.map(i=>allX[i]); allY=idx.map(i=>allY[i]);
+
+  const xTensor=tf.tensor2d(allX);
+  const yTensor=tf.tensor2d(allY);
+
+  // Entraînement avec callbacks de progression
+  let epoch=0;
+  await m.fit(xTensor, yTensor, {
+    epochs: 60,
+    batchSize: 32,
+    validationSplit: 0.1,
+    shuffle: true,
+    callbacks:{
+      onEpochEnd: async(ep, logs)=>{
+        epoch=ep+1;
+        const acc=Math.round((logs.acc||logs.accuracy||0)*100);
+        txt.textContent=`Entraînement... époque ${epoch}/60 — précision ${acc}%`;
+        await tf.nextFrame();
+      }
+    }
+  });
+
+  xTensor.dispose(); yTensor.dispose();
+  model = m;
+
+  dot.className='ms-dot ready';
+  txt.textContent='Modèle entraîné localement ✓';
+  txt.className='ms-text ready';
+  connEl.textContent='TF.js local (800 ex.)';
   document.getElementById('btn-analyze').disabled=false;
   document.getElementById('btn-analyze').textContent='Analyser →';
 }
 
 async function predictWithModel(pixelData){
-  if(model === 'local' || !model){
-    return simulateRealistic(pixelData);
-  }
-  return tf.tidy(()=>{
-    // Normalize: MNIST expects values in [0,1]
-    const tensor = tf.tensor2d([pixelData],[1,784]);
-    const preds = model.predict(tensor);
+  if(!model || model==='local') return simulateRealistic(pixelData);
+  const result = await tf.tidy(()=>{
+    const tensor=tf.tensor2d([pixelData],[1,784]);
+    const preds=model.predict(tensor);
     return Array.from(preds.dataSync());
   });
+  return result;
 }
 
 // ══════════ REALISTIC SIMULATION (fallback) ══════════
